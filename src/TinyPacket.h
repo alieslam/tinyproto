@@ -195,8 +195,8 @@ private:
 
     uint8_t*            m_buf;
     uint16_t            m_uid;
-    uint8_t             m_size;
-    uint8_t             m_len;
+    uint16_t             m_size;
+    uint16_t             m_len;
     uint8_t             m_p;
 };
 
