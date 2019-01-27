@@ -89,6 +89,18 @@ inline static int __check_fcs_field(uint8_t fcs_bits, fcs_t fcs)
 
 ///////////////////////////////////////////////////////////////////////////////
 
+inline static int __check_fcs_field_bytes(uint8_t fcs_bits, fcs_t fcs,uint8_t * buff)
+{
+    /* Check CRC */
+#ifdef CONFIG_ENABLE_FCS16
+    uint16_t fcs_check = (uint16_t)(buff[0]<<8)|buff[1];
+    if ((fcs_bits == 16) && ((uint16_t)fcs == fcs_check)) return 1;
+#endif
+    return fcs_bits == 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 inline static void  __update_fcs_field(uint8_t fcs_bits, fcs_t* fcs, uint8_t byte)
 {
     /* CRC is calculated only over real user data and frame header */
@@ -113,6 +125,24 @@ inline static void  __update_fcs_field(uint8_t fcs_bits, fcs_t* fcs, uint8_t byt
 
 ///////////////////////////////////////////////////////////////////////////////
 
+inline static void  __update_fcs_field_arr(uint8_t fcs_bits, fcs_t* fcs, uint8_t * buff, int len)
+{
+    /* CRC is calculated only over real user data and frame header */
+    switch (fcs_bits)
+    {
+#ifdef CONFIG_ENABLE_FCS16
+    case 16:
+        *fcs = crc16(*fcs,buff,len);
+        uint16_t swap = *fcs;
+        *fcs = (*fcs>>8)|(swap<<8);break;
+#endif
+    default:
+        break;
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+
 inline static void  __commit_fcs_field(uint8_t fcs_bits, fcs_t* fcs)
 {
     /* CRC is calculated only over real user data and frame header */
@@ -120,7 +150,7 @@ inline static void  __commit_fcs_field(uint8_t fcs_bits, fcs_t* fcs)
     {
 #ifdef CONFIG_ENABLE_FCS16
     case 16:
-        *fcs = *fcs^0xFFFF; break;
+        *fcs = *fcs^0x0000; break;
 #endif
 #ifdef CONFIG_ENABLE_FCS32
     case 32:
@@ -845,8 +875,11 @@ int tiny_read_buffer(STinyData *handle, uint8_t *pbuf, int len, uint8_t flags)
                 result = TINY_ERR_DATA_TOO_LARGE;
                 break;
             }
+
+            __update_fcs_field_arr(handle->fcs_bits, &handle->rx.fcs, pbuf , handle->rx.framelen);
+
             /* Check CRC */
-            if (!__check_fcs_field(handle->fcs_bits, handle->rx.fcs))
+            if (!__check_fcs_field_bytes(handle->fcs_bits, handle->rx.fcs, pbuf+handle->rx.framelen))
             {
                 STATS(handle->stat.framesBroken++);
                 result = TINY_ERR_FAILED;
@@ -892,7 +925,7 @@ int tiny_read_buffer(STinyData *handle, uint8_t *pbuf, int len, uint8_t flags)
         default:
             break;
         }
-        __update_fcs_field(handle->fcs_bits, &handle->rx.fcs, byte);
+
         if ( (handle->rx.framelen == len) && !( flags & TINY_FLAG_READ_ALL ) )
         {
             // Buffer is full
